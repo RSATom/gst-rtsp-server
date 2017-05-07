@@ -86,6 +86,7 @@ typedef enum {
 typedef enum {
   GST_RTSP_TRANSPORT_MODE_PLAY    = 1,
   GST_RTSP_TRANSPORT_MODE_RECORD  = 2,
+  GST_RTSP_TRANSPORT_MODE_PLAY_RECORD  = GST_RTSP_TRANSPORT_MODE_PLAY | GST_RTSP_TRANSPORT_MODE_RECORD,
 } GstRTSPTransportMode;
 
 /**
@@ -274,8 +275,10 @@ GstClock *            gst_rtsp_media_get_clock        (GstRTSPMedia *media);
 GstClockTime          gst_rtsp_media_get_base_time    (GstRTSPMedia *media);
 
 guint                 gst_rtsp_media_n_streams        (GstRTSPMedia *media);
+guint                 gst_rtsp_media_n_mode_streams   (GstRTSPMedia *media, gboolean record);
+
 GstRTSPStream *       gst_rtsp_media_get_stream       (GstRTSPMedia *media, guint idx);
-GstRTSPStream *       gst_rtsp_media_find_stream      (GstRTSPMedia *media, const gchar * control);
+GstRTSPStream *       gst_rtsp_media_find_stream      (GstRTSPMedia *media, const gchar * control, gboolean record);
 
 gboolean              gst_rtsp_media_seek             (GstRTSPMedia *media, GstRTSPTimeRange *range);
 gchar *               gst_rtsp_media_get_range_string (GstRTSPMedia *media,
@@ -286,6 +289,9 @@ gboolean              gst_rtsp_media_set_state        (GstRTSPMedia *media, GstS
                                                        GPtrArray *transports);
 void                  gst_rtsp_media_set_pipeline_state (GstRTSPMedia * media,
                                                          GstState state);
+
+gboolean              gst_rtsp_media_is_recording      (GstRTSPMedia * media);
+void                  gst_rtsp_media_reset_recording   (GstRTSPMedia * media);
 
 #ifdef G_DEFINE_AUTOPTR_CLEANUP_FUNC
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(GstRTSPMedia, gst_object_unref)

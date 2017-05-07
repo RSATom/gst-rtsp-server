@@ -71,6 +71,9 @@ GstRTSPStream *   gst_rtsp_stream_new              (guint idx, GstElement *paylo
                                                     GstPad *pad);
 guint             gst_rtsp_stream_get_index        (GstRTSPStream *stream);
 guint             gst_rtsp_stream_get_pt           (GstRTSPStream *stream);
+
+gboolean          gst_rtsp_stream_is_source        (GstRTSPStream *stream);
+gboolean          gst_rtsp_stream_is_sink          (GstRTSPStream *stream);
 GstPad *          gst_rtsp_stream_get_srcpad       (GstRTSPStream *stream);
 GstPad *          gst_rtsp_stream_get_sinkpad      (GstRTSPStream *stream);
 
@@ -174,6 +177,9 @@ void              gst_rtsp_stream_set_buffer_size  (GstRTSPStream *stream, guint
 guint             gst_rtsp_stream_get_buffer_size  (GstRTSPStream *stream);
 
 void              gst_rtsp_stream_set_pt_map                 (GstRTSPStream * stream, guint pt, GstCaps * caps);
+gboolean          gst_rtsp_stream_has_empty_pt_map           (GstRTSPStream * stream);
+void              gst_rtsp_stream_reset_pt_map               (GstRTSPStream * stream);
+
 GstElement *      gst_rtsp_stream_request_aux_sender         (GstRTSPStream * stream, guint sessid);
 
 gboolean          gst_rtsp_stream_allocate_udp_sockets       (GstRTSPStream * stream, GSocketFamily family,
