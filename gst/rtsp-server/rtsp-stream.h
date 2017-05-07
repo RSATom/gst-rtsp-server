@@ -79,6 +79,10 @@ GST_EXPORT
 guint             gst_rtsp_stream_get_pt           (GstRTSPStream *stream);
 
 GST_EXPORT
+gboolean          gst_rtsp_stream_is_source        (GstRTSPStream *stream);
+GST_EXPORT
+gboolean          gst_rtsp_stream_is_sink          (GstRTSPStream *stream);
+GST_EXPORT
 GstPad *          gst_rtsp_stream_get_srcpad       (GstRTSPStream *stream);
 
 GST_EXPORT
@@ -273,6 +277,10 @@ guint             gst_rtsp_stream_get_buffer_size  (GstRTSPStream *stream);
 
 GST_EXPORT
 void              gst_rtsp_stream_set_pt_map                 (GstRTSPStream * stream, guint pt, GstCaps * caps);
+GST_EXPORT
+gboolean          gst_rtsp_stream_has_empty_pt_map           (GstRTSPStream * stream);
+GST_EXPORT
+void              gst_rtsp_stream_reset_pt_map               (GstRTSPStream * stream);
 
 GST_EXPORT
 GstElement *      gst_rtsp_stream_request_aux_sender         (GstRTSPStream * stream, guint sessid);

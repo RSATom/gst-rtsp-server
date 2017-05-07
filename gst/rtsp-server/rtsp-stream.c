@@ -441,6 +441,34 @@ gst_rtsp_stream_get_pt (GstRTSPStream * stream)
 }
 
 /**
+ * gst_rtsp_stream_is_source:
+ * @stream: a #GstRTSPStream
+ *
+ * Returns: TRUE if @stream has associated srcpad
+ */
+gboolean
+gst_rtsp_stream_is_source (GstRTSPStream * stream)
+{
+  g_return_val_if_fail (GST_IS_RTSP_STREAM (stream), FALSE);
+
+  return stream->priv->srcpad != NULL;
+}
+
+/**
+ * gst_rtsp_stream_is_sink:
+ * @stream: a #GstRTSPStream
+ *
+ * Returns: TRUE if @stream has associated sinkpad
+ */
+gboolean
+gst_rtsp_stream_is_sink (GstRTSPStream * stream)
+{
+  g_return_val_if_fail (GST_IS_RTSP_STREAM (stream), FALSE);
+
+  return stream->priv->sinkpad != NULL;
+}
+
+/**
  * gst_rtsp_stream_get_srcpad:
  * @stream: a #GstRTSPStream
  *
@@ -2349,6 +2377,29 @@ gst_rtsp_stream_set_pt_map (GstRTSPStream * stream, guint pt, GstCaps * caps)
   g_mutex_unlock (&priv->lock);
 }
 
+gboolean
+gst_rtsp_stream_has_empty_pt_map (GstRTSPStream * stream)
+{
+  GstRTSPStreamPrivate *priv = stream->priv;
+  gboolean empty;
+
+  g_mutex_lock (&priv->lock);
+  empty = g_hash_table_size (priv->ptmap) == 0;
+  g_mutex_unlock (&priv->lock);
+
+  return empty;
+}
+
+void
+gst_rtsp_stream_reset_pt_map (GstRTSPStream * stream)
+{
+  GstRTSPStreamPrivate *priv = stream->priv;
+
+  g_mutex_lock (&priv->lock);
+  g_hash_table_remove_all (priv->ptmap);
+  g_mutex_unlock (&priv->lock);
+}
+
 /**
  * gst_rtsp_stream_set_publish_clock_mode:
  * @stream: a #GstRTSPStream
@@ -3103,7 +3154,10 @@ gst_rtsp_stream_join_bin (GstRTSPStream * stream, GstBin * bin,
   /* create a session with the same index as the stream */
   idx = priv->idx;
 
-  GST_INFO ("stream %p joining bin as session %u", stream, idx);
+  if (gst_rtsp_stream_is_source(stream))
+    GST_INFO ("SOURCE stream %p joining bin as session %u", stream, idx);
+  if (gst_rtsp_stream_is_sink(stream))
+    GST_INFO ("SINK stream %p joining bin as session %u", stream, idx);
 
   if (priv->profiles & GST_RTSP_PROFILE_SAVP
       || priv->profiles & GST_RTSP_PROFILE_SAVPF) {
@@ -3750,6 +3804,16 @@ update_transport (GstRTSPStream * stream, GstRTSPStreamTransport * trans,
         if (priv->udpsink[0])
           g_signal_emit_by_name (priv->udpsink[0], "remove", dest, min, NULL);
         g_signal_emit_by_name (priv->udpsink[1], "remove", dest, max, NULL);
+        if (priv->sinkpad) {
+          if (gst_pad_is_linked(priv->sinkpad)) {
+            GstPad* peer = gst_pad_get_peer (priv->sinkpad);
+            gst_pad_unlink (peer, priv->sinkpad);
+            gst_object_unref (peer);
+          } else {
+            GST_WARNING_OBJECT(priv->sinkpad, "pad is not linked");
+          }
+        }
+
         priv->transports = g_list_remove (priv->transports, trans);
       }
       priv->transports_cookie++;
