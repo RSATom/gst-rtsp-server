@@ -3729,10 +3729,7 @@ update_transport (GstRTSPStream * stream, GstRTSPStreamTransport * trans,
       gint min, max;
 
       dest = tr->destination;
-      if (tr->lower_transport == GST_RTSP_LOWER_TRANS_UDP_MCAST) {
-        min = tr->port.min;
-        max = tr->port.max;
-      } else if (priv->client_side) {
+      if (priv->client_side) {
         /* In client side mode the 'destination' is the RTSP server, so send
          * to those ports */
         min = tr->server_port.min;
