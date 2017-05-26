@@ -41,6 +41,9 @@
 #define GST_RTSP_MOUNT_POINTS_GET_PRIVATE(obj)  \
        (G_TYPE_INSTANCE_GET_PRIVATE ((obj), GST_TYPE_RTSP_MOUNT_POINTS, GstRTSPMountPointsPrivate))
 
+GST_DEBUG_CATEGORY_STATIC (rtsp_media_debug);
+#define GST_CAT_DEFAULT rtsp_media_debug
+
 typedef struct
 {
   gchar *path;
@@ -98,9 +101,6 @@ struct _GstRTSPMountPointsPrivate
 };
 
 G_DEFINE_TYPE (GstRTSPMountPoints, gst_rtsp_mount_points, G_TYPE_OBJECT);
-
-GST_DEBUG_CATEGORY_STATIC (rtsp_media_debug);
-#define GST_CAT_DEFAULT rtsp_media_debug
 
 static gchar *default_make_path (GstRTSPMountPoints * mounts,
     const GstRTSPUrl * url);
