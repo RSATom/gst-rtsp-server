@@ -80,6 +80,7 @@ guint             gst_rtsp_stream_get_index        (GstRTSPStream *stream);
 GST_RTSP_SERVER_API
 guint             gst_rtsp_stream_get_pt           (GstRTSPStream *stream);
 
+
 GST_RTSP_SERVER_API
 GstPad *          gst_rtsp_stream_get_srcpad       (GstRTSPStream *stream);
 
@@ -275,6 +276,10 @@ guint             gst_rtsp_stream_get_buffer_size  (GstRTSPStream *stream);
 
 GST_RTSP_SERVER_API
 void              gst_rtsp_stream_set_pt_map                 (GstRTSPStream * stream, guint pt, GstCaps * caps);
+GST_RTSP_SERVER_API
+gboolean          gst_rtsp_stream_has_empty_pt_map           (GstRTSPStream * stream);
+GST_RTSP_SERVER_API
+void              gst_rtsp_stream_reset_pt_map               (GstRTSPStream * stream);
 
 GST_RTSP_SERVER_API
 GstElement *      gst_rtsp_stream_request_aux_sender         (GstRTSPStream * stream, guint sessid);
@@ -300,9 +305,13 @@ gboolean           gst_rtsp_stream_is_complete (GstRTSPStream * stream);
 
 GST_RTSP_SERVER_API
 gboolean           gst_rtsp_stream_is_sender (GstRTSPStream * stream);
+GST_RTSP_SERVER_API
+gboolean           gst_rtsp_stream_is_sender_unlocked (GstRTSPStream * stream);
 
 GST_RTSP_SERVER_API
 gboolean           gst_rtsp_stream_is_receiver (GstRTSPStream * stream);
+GST_RTSP_SERVER_API
+gboolean           gst_rtsp_stream_is_receiver_unlocked (GstRTSPStream * stream);
 
 GST_RTSP_SERVER_API
 gboolean           gst_rtsp_stream_handle_keymgmt (GstRTSPStream *stream, const gchar *keymgmt);

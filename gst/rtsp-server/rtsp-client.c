@@ -87,6 +87,8 @@ struct _GstRTSPClientPrivate
   GstRTSPAuth *auth;
   GstRTSPThreadPool *thread_pool;
 
+  GSequence* announced;
+
   /* used to cache the media in the last requested DESCRIBE so that
    * we can pick it up in the next SETUP immediately */
   gchar *path;
@@ -599,6 +601,7 @@ gst_rtsp_client_init (GstRTSPClient * client)
   priv->pipelined_requests = g_hash_table_new_full (g_str_hash,
       g_str_equal, g_free, g_free);
   priv->tstate = TUNNEL_STATE_UNKNOWN;
+  priv->announced = g_sequence_new(g_object_unref);
 }
 
 static GstRTSPFilterResult
@@ -758,6 +761,12 @@ gst_rtsp_client_finalize (GObject * obj)
    * dropped when the last session is removed from the list. */
   g_assert (priv->sessions == NULL);
   g_assert (priv->session_removed_id == 0);
+
+  g_sequence_foreach (
+    priv->announced,
+    (GFunc)gst_rtsp_media_reset_recording,
+    NULL);
+  g_sequence_free (priv->announced);
 
   g_hash_table_unref (priv->transports);
   g_hash_table_unref (priv->pipelined_requests);
@@ -937,7 +946,7 @@ paths_are_equal (const gchar * path1, const gchar * path2, gint len2)
  * but is cached for when the same client (without breaking the connection) is
  * doing a setup for the exact same url. */
 static GstRTSPMedia *
-find_media (GstRTSPClient * client, GstRTSPContext * ctx, gchar * path,
+find_media (GstRTSPClient * client, GstRTSPContext * ctx, gchar * path, gboolean record,
     gint * matched)
 {
   GstRTSPClientPrivate *priv = client->priv;
@@ -958,6 +967,12 @@ find_media (GstRTSPClient * client, GstRTSPContext * ctx, gchar * path,
   if (!gst_rtsp_auth_check (GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_CONSTRUCT))
     goto not_authorized;
 
+  if (!record && !gst_rtsp_auth_check (GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_PLAY))
+    goto not_authorized;
+
+  if (record && !gst_rtsp_auth_check (GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_RECORD))
+    goto not_authorized;
+
   if (matched)
     path_len = *matched;
   else
@@ -974,8 +989,8 @@ find_media (GstRTSPClient * client, GstRTSPContext * ctx, gchar * path,
 
     ctx->media = media;
 
-    if (!(gst_rtsp_media_get_transport_mode (media) &
-            GST_RTSP_TRANSPORT_MODE_RECORD)) {
+    if ((gst_rtsp_media_get_transport_mode (media) &
+            GST_RTSP_TRANSPORT_MODE_PLAY) && !record) {
       GstRTSPThread *thread;
 
       thread = gst_rtsp_thread_pool_get_thread (priv->thread_pool,
@@ -1773,6 +1788,34 @@ do_keepalive (GstRTSPSession * session)
   gst_rtsp_session_touch (session);
 }
 
+static gboolean
+parse_transport_is_record (const char *transport)
+{
+  GstRTSPTransport * tr;
+  gchar **transports;
+  gboolean is_record = FALSE;
+
+  gst_rtsp_transport_new (&tr);
+  gst_rtsp_transport_init (tr);
+
+  GST_DEBUG ("parsing transports %s", transport);
+
+  transports = g_strsplit (transport, ",", 0);
+
+  // parse only first transport in hope all transports have the same mode
+  if (transports[0]) {
+    if (GST_RTSP_OK != gst_rtsp_transport_parse (transports[0], tr))
+      GST_WARNING ("could not parse transport %s", transports[0]);
+  }
+
+  is_record = tr->mode_record;
+
+  gst_rtsp_transport_free (tr);
+  g_strfreev (transports);
+
+  return is_record;
+}
+
 /* parse @transport and return a valid transport in @tr. only transports
  * supported by @stream are returned. Returns FALSE if no valid transport
  * was found. */
@@ -2014,8 +2057,7 @@ make_server_transport (GstRTSPClient * client, GstRTSPMedia * media,
       break;
   }
 
-  if ((gst_rtsp_media_get_transport_mode (media) &
-          GST_RTSP_TRANSPORT_MODE_PLAY))
+  if (st->mode_play)
     gst_rtsp_stream_get_ssrc (ctx->stream, &st->ssrc);
 
   return st;
@@ -2154,6 +2196,7 @@ handle_setup_request (GstRTSPClient * client, GstRTSPContext * ctx)
   gboolean new_session = FALSE;
   GstRTSPStatusCode sig_result;
   gchar *pipelined_request_id = NULL, *accept_range = NULL;
+  gboolean is_record;
 
   if (!ctx->uri)
     goto no_uri;
@@ -2173,6 +2216,8 @@ handle_setup_request (GstRTSPClient * client, GstRTSPContext * ctx)
   if (ctx->request->type_data.request.version >= GST_RTSP_VERSION_2_0)
     gst_rtsp_message_get_header (ctx->request,
         GST_RTSP_HDR_PIPELINED_REQUESTS, &pipelined_request_id, 0);
+
+  is_record = parse_transport_is_record(transport);
 
   /* we create the session after parsing stuff so that we don't make
    * a session for malformed requests */
@@ -2194,7 +2239,7 @@ handle_setup_request (GstRTSPClient * client, GstRTSPContext * ctx)
   /* we have no session media, find one and manage it */
   if (sessmedia == NULL) {
     /* get a handle to the configuration of the media in the session */
-    media = find_media (client, ctx, path, &matched);
+    media = find_media (client, ctx, path, is_record, &matched);
     /* need to suspend the media, if the protocol has changed */
     if (media != NULL)
       gst_rtsp_media_suspend (media);
@@ -2209,7 +2254,7 @@ handle_setup_request (GstRTSPClient * client, GstRTSPContext * ctx)
     goto media_not_found_no_reply;
 
   if (path[matched] == '\0') {
-    if (gst_rtsp_media_n_streams (media) == 1) {
+    if (gst_rtsp_media_n_mode_streams (media, is_record) == 1) {
       stream = gst_rtsp_media_get_stream (media, 0);
     } else {
       goto control_not_found;
@@ -2221,7 +2266,7 @@ handle_setup_request (GstRTSPClient * client, GstRTSPContext * ctx)
     control = &path[matched + 1];
 
     /* find the stream now using the control part */
-    stream = gst_rtsp_media_find_stream (media, control);
+    stream = gst_rtsp_media_find_stream (media, control, is_record);
   }
 
   if (stream == NULL)
@@ -2645,8 +2690,9 @@ handle_describe_request (GstRTSPClient * client, GstRTSPContext * ctx)
     goto no_path;
 
   /* find the media object for the uri */
-  if (!(media = find_media (client, ctx, path, NULL)))
+  if (!(media = find_media (client, ctx, path, FALSE, NULL)))
     goto no_media;
+
 
   if (!(gst_rtsp_media_get_transport_mode (media) &
           GST_RTSP_TRANSPORT_MODE_PLAY))
@@ -2776,6 +2822,30 @@ no_prepare:
   }
 }
 
+static gint
+compare_pointers (gconstpointer p1, gconstpointer p2, gpointer user_data)
+{
+  return ((p1 < p2) ? -1 : ((p1 == p2) ? 0 : 1));
+}
+
+static void
+add_announced(GstRTSPClient * client, GstRTSPMedia * media)
+{
+  GstRTSPClientPrivate *priv = client->priv;
+  GSequenceIter * iter;
+
+  iter = g_sequence_search(priv->announced, NULL, compare_pointers, media);
+
+  if (g_sequence_iter_is_begin(iter) == FALSE) {
+    if (g_sequence_get(g_sequence_iter_prev(iter)) == media)
+      return;
+  }
+
+  g_sequence_insert_before (iter, media);
+
+  g_object_ref (media);
+}
+
 static gboolean
 handle_announce_request (GstRTSPClient * client, GstRTSPContext * ctx)
 {
@@ -2823,10 +2893,13 @@ handle_announce_request (GstRTSPClient * client, GstRTSPContext * ctx)
     goto no_path;
 
   /* find the media object for the uri */
-  if (!(media = find_media (client, ctx, path, NULL)))
+  if (!(media = find_media (client, ctx, path, TRUE, NULL)))
     goto no_media;
 
   ctx->media = media;
+
+  if (gst_rtsp_media_is_recording (media))
+      goto already_recording;
 
   g_signal_emit (client, gst_rtsp_client_signals[SIGNAL_PRE_ANNOUNCE_REQUEST],
       0, ctx, &sig_result);
@@ -2859,6 +2932,8 @@ handle_announce_request (GstRTSPClient * client, GstRTSPContext * ctx)
 
     g_free (location);
   }
+
+  add_announced (client, media);
 
   /* we suspend after the announce */
   gst_rtsp_media_suspend (media);
@@ -2917,6 +2992,15 @@ no_media:
     g_free (path);
     /* error reply is already sent */
     gst_sdp_message_free (sdp);
+    return FALSE;
+  }
+already_recording:
+  {
+    GST_ERROR ("client %p: media already recording", client);
+    g_free (path);
+    gst_sdp_message_free (sdp);
+    clean_cached_media(client, FALSE);
+    send_generic_response (client, GST_RTSP_STS_BAD_REQUEST, ctx);
     return FALSE;
   }
 sig_failed:

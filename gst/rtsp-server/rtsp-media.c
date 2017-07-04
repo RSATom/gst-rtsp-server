@@ -130,7 +130,8 @@ struct _GstRTSPMediaPrivate
   GstState target_state;
 
   /* RTP session manager */
-  GstElement *rtpbin;
+  GstElement *play_rtpbin;
+  GstElement *record_rtpbin;
 
   /* the range of media */
   GstRTSPTimeRange range;       /* protected by lock */
@@ -1477,8 +1478,8 @@ gst_rtsp_media_set_do_retransmission (GstRTSPMedia * media,
   g_mutex_lock (&priv->lock);
   priv->do_retransmission = do_retransmission;
 
-  if (priv->rtpbin)
-    g_object_set (priv->rtpbin, "do-retransmission", do_retransmission, NULL);
+  if (priv->play_rtpbin)
+    g_object_set (priv->play_rtpbin, "do-retransmission", do_retransmission, NULL);
   g_mutex_unlock (&priv->lock);
 }
 
@@ -1527,13 +1528,13 @@ gst_rtsp_media_set_latency (GstRTSPMedia * media, guint latency)
 
   g_mutex_lock (&priv->lock);
   priv->latency = latency;
-  if (priv->rtpbin) {
-    g_object_set (priv->rtpbin, "latency", latency, NULL);
+  if (priv->play_rtpbin) {
+    g_object_set (priv->play_rtpbin, "latency", latency, NULL);
 
     for (i = 0; i < media->priv->streams->len; i++) {
       GObject *storage = NULL;
 
-      g_signal_emit_by_name (G_OBJECT (media->priv->rtpbin), "get-storage",
+      g_signal_emit_by_name (G_OBJECT (media->priv->play_rtpbin), "get-storage",
           i, &storage);
       if (storage)
         g_object_set (storage, "size-time", (media->priv->latency + 50) * GST_MSECOND, NULL);
@@ -2243,6 +2244,42 @@ gst_rtsp_media_n_streams (GstRTSPMedia * media)
 }
 
 /**
+ * gst_rtsp_media_n_mode_streams:
+ * @media: a #GstRTSPMedia
+ * @record: mode
+ *
+ * Get the number of streams with specified mode in this media.
+ *
+ * Returns: The number of streams.
+ */
+guint
+gst_rtsp_media_n_mode_streams(GstRTSPMedia *media, gboolean record)
+{
+  GstRTSPMediaPrivate *priv;
+  guint res = 0;
+  gint i;
+
+  g_return_val_if_fail (GST_IS_RTSP_MEDIA (media), 0);
+
+  priv = media->priv;
+
+  g_mutex_lock (&priv->lock);
+  for (i = 0; i < priv->streams->len; i++) {
+    GstRTSPStream *test;
+
+    test = g_ptr_array_index (priv->streams, i);
+    if (record && gst_rtsp_stream_is_receiver(test)) {
+        ++res;
+    } else if (!record && gst_rtsp_stream_is_sender(test)) {
+        ++res;
+    }
+  }
+  g_mutex_unlock (&priv->lock);
+
+  return res;
+}
+
+/**
  * gst_rtsp_media_get_stream:
  * @media: a #GstRTSPMedia
  * @idx: the stream index
@@ -2284,7 +2321,7 @@ gst_rtsp_media_get_stream (GstRTSPMedia * media, guint idx)
  * not exist.
  */
 GstRTSPStream *
-gst_rtsp_media_find_stream (GstRTSPMedia * media, const gchar * control)
+gst_rtsp_media_find_stream (GstRTSPMedia * media, const gchar * control, gboolean record)
 {
   GstRTSPMediaPrivate *priv;
   GstRTSPStream *res;
@@ -2302,7 +2339,7 @@ gst_rtsp_media_find_stream (GstRTSPMedia * media, const gchar * control)
     GstRTSPStream *test;
 
     test = g_ptr_array_index (priv->streams, i);
-    if (gst_rtsp_stream_has_control (test, control)) {
+    if (gst_rtsp_stream_has_control (test, control) && record == gst_rtsp_stream_is_receiver(test)) {
       res = test;
       break;
     }
@@ -2739,7 +2776,8 @@ default_handle_message (GstRTSPMedia * media, GstMessage * message)
       GST_DEBUG ("%p: went from %s to %s (pending %s)", media,
           gst_element_state_get_name (old), gst_element_state_get_name (new),
           gst_element_state_get_name (pending));
-      if (priv->no_more_pads_pending == 0 && is_receive_only (media) &&
+      if (((priv->no_more_pads_pending == 0 && is_receive_only (media)) ||
+           gst_rtsp_media_is_recording(media)) &&
           old == GST_STATE_READY && new == GST_STATE_PAUSED) {
         GST_INFO ("%p: went to PAUSED, prepared now", media);
         collect_media_stats (media);
@@ -2945,7 +2983,7 @@ pad_added_cb (GstElement * element, GstPad * pad, GstRTSPMedia * media)
   /* join the element in the PAUSED state because this callback is
    * called from the streaming thread and it is PAUSED */
   if (!gst_rtsp_stream_join_bin (stream, GST_BIN (priv->pipeline),
-          priv->rtpbin, GST_STATE_PAUSED)) {
+          priv->play_rtpbin, GST_STATE_PAUSED)) {
     GST_WARNING ("failed to join bin element");
   }
 
@@ -2979,7 +3017,7 @@ pad_removed_cb (GstElement * element, GstPad * pad, GstRTSPMedia * media)
   GST_INFO ("pad removed %s:%s, stream %p", GST_DEBUG_PAD_NAME (pad), stream);
 
   g_rec_mutex_lock (&priv->state_lock);
-  gst_rtsp_stream_leave_bin (stream, GST_BIN (priv->pipeline), priv->rtpbin);
+  gst_rtsp_stream_leave_bin (stream, GST_BIN (priv->pipeline), priv->play_rtpbin);
   g_rec_mutex_unlock (&priv->state_lock);
 
   gst_rtsp_media_remove_stream (media, stream);
@@ -3163,35 +3201,41 @@ start_prepare (GstRTSPMedia * media)
   if (priv->status != GST_RTSP_MEDIA_STATUS_PREPARING)
     goto no_longer_preparing;
 
-  g_signal_connect (priv->rtpbin, "new-storage", G_CALLBACK (new_storage_cb), media);
-  g_signal_connect (priv->rtpbin, "request-fec-decoder", G_CALLBACK (request_fec_decoder), media);
+  g_signal_connect (priv->play_rtpbin, "new-storage", G_CALLBACK (new_storage_cb), media);
+  g_signal_connect (priv->play_rtpbin, "request-fec-decoder", G_CALLBACK (request_fec_decoder), media);
 
   /* link streams we already have, other streams might appear when we have
    * dynamic elements */
   for (i = 0; i < priv->streams->len; i++) {
     GstRTSPStream *stream;
+    GstElement* rtpbin;
 
     stream = g_ptr_array_index (priv->streams, i);
 
+    if (gst_rtsp_stream_is_receiver (stream))
+      rtpbin = priv->record_rtpbin;
+    else
+      rtpbin = priv->play_rtpbin;
+
     if (priv->rtx_time > 0) {
       /* enable retransmission by setting rtprtxsend as the "aux" element of rtpbin */
-      g_signal_connect (priv->rtpbin, "request-aux-sender",
+      g_signal_connect (rtpbin, "request-aux-sender",
           (GCallback) request_aux_sender, media);
     }
 
     if (priv->do_retransmission) {
-      g_signal_connect (priv->rtpbin, "request-aux-receiver",
+      g_signal_connect (priv->play_rtpbin, "request-aux-receiver",
           (GCallback) request_aux_receiver, media);
     }
 
     if (!gst_rtsp_stream_join_bin (stream, GST_BIN (priv->pipeline),
-            priv->rtpbin, GST_STATE_NULL)) {
+            rtpbin, GST_STATE_NULL)) {
       goto join_bin_failed;
     }
   }
 
-  if (priv->rtpbin)
-    g_object_set (priv->rtpbin, "do-retransmission", priv->do_retransmission,
+  if (priv->play_rtpbin)
+    g_object_set (priv->play_rtpbin, "do-retransmission", priv->do_retransmission,
         "do-lost", TRUE, NULL);
 
   for (walk = priv->dynamic; walk; walk = g_list_next (walk)) {
@@ -3253,30 +3297,62 @@ default_prepare (GstRTSPMedia * media, GstRTSPThread * thread)
   GstBus *bus;
   GMainContext *context;
   GSource *source;
+  gboolean play_mode, record_mode;
 
   priv = media->priv;
+
+  play_mode = priv->transport_mode & GST_RTSP_TRANSPORT_MODE_PLAY;
+  record_mode = priv->transport_mode & GST_RTSP_TRANSPORT_MODE_RECORD;
 
   klass = GST_RTSP_MEDIA_GET_CLASS (media);
 
   if (!klass->create_rtpbin)
     goto no_create_rtpbin;
 
-  priv->rtpbin = klass->create_rtpbin (media);
-  if (priv->rtpbin != NULL) {
-    gboolean success = TRUE;
+  if (play_mode) {
+    priv->play_rtpbin = klass->create_rtpbin (media);
+    if (priv->play_rtpbin != NULL) {
+      gboolean success = TRUE;
 
-    g_object_set (priv->rtpbin, "latency", priv->latency, NULL);
+      g_object_set (priv->play_rtpbin, "latency", priv->latency, NULL);
 
-    if (klass->setup_rtpbin)
-      success = klass->setup_rtpbin (media, priv->rtpbin);
+      if (klass->setup_rtpbin)
+        success = klass->setup_rtpbin (media, priv->play_rtpbin);
 
-    if (success == FALSE) {
-      gst_object_unref (priv->rtpbin);
-      priv->rtpbin = NULL;
+      if (success == FALSE) {
+        gst_object_unref (priv->play_rtpbin);
+        priv->play_rtpbin = NULL;
+      }
     }
   }
-  if (priv->rtpbin == NULL)
+
+  if (record_mode) {
+    priv->record_rtpbin = klass->create_rtpbin (media);
+    if (priv->record_rtpbin != NULL) {
+      gboolean success = TRUE;
+
+      if (klass->setup_rtpbin)
+        success = klass->setup_rtpbin (media, priv->record_rtpbin);
+
+      if (success == FALSE) {
+        gst_object_unref (priv->record_rtpbin);
+        priv->record_rtpbin = NULL;
+      }
+    }
+  }
+
+  if ((play_mode && !priv->play_rtpbin) || (record_mode && !priv->record_rtpbin)) {
+    if(priv->play_rtpbin) {
+      gst_object_unref (priv->play_rtpbin);
+      priv->play_rtpbin = NULL;
+    }
+    if(priv->record_rtpbin) {
+      gst_object_unref (priv->record_rtpbin);
+      priv->record_rtpbin = NULL;
+    }
+
     goto no_rtpbin;
+  }
 
   priv->thread = thread;
   context = (thread != NULL) ? (thread->context) : NULL;
@@ -3293,7 +3369,10 @@ default_prepare (GstRTSPMedia * media, GstRTSPThread * thread)
   priv->id = g_source_attach (priv->source, context);
 
   /* add stuff to the bin */
-  gst_bin_add (GST_BIN (priv->pipeline), priv->rtpbin);
+  if (play_mode)
+    gst_bin_add (GST_BIN (priv->pipeline), priv->play_rtpbin);
+  if (record_mode)
+    gst_bin_add (GST_BIN (priv->pipeline), priv->record_rtpbin);
 
   /* do remainder in context */
   source = g_idle_source_new ();
@@ -3475,7 +3554,10 @@ finish_unprepare (GstRTSPMedia * media)
 
     stream = g_ptr_array_index (priv->streams, i);
 
-    gst_rtsp_stream_leave_bin (stream, GST_BIN (priv->pipeline), priv->rtpbin);
+    if (gst_rtsp_stream_is_sender(stream))
+      gst_rtsp_stream_leave_bin (stream, GST_BIN (priv->pipeline), priv->play_rtpbin);
+    if (gst_rtsp_stream_is_receiver(stream))
+      gst_rtsp_stream_leave_bin (stream, GST_BIN (priv->pipeline), priv->record_rtpbin);
   }
 
   /* remove the pad signal handlers */
@@ -3496,8 +3578,15 @@ finish_unprepare (GstRTSPMedia * media)
     g_slice_free (DynPaySignalHandlers, handlers);
   }
 
-  gst_bin_remove (GST_BIN (priv->pipeline), priv->rtpbin);
-  priv->rtpbin = NULL;
+  if (priv->play_rtpbin) {
+    gst_bin_remove (GST_BIN (priv->pipeline), priv->play_rtpbin);
+    priv->play_rtpbin = NULL;
+  }
+
+  if (priv->record_rtpbin) {
+    gst_bin_remove (GST_BIN (priv->pipeline), priv->record_rtpbin);
+    priv->record_rtpbin = NULL;
+  }
 
   if (priv->nettime)
     gst_object_unref (priv->nettime);
@@ -3780,24 +3869,43 @@ static gboolean
 default_handle_sdp (GstRTSPMedia * media, GstSDPMessage * sdp)
 {
   GstRTSPMediaPrivate *priv = media->priv;
-  gint i, medias_len;
+  gint i, medias_len, sink_stream_count, skipped_streams;
 
   medias_len = gst_sdp_message_medias_len (sdp);
-  if (medias_len != priv->streams->len) {
+
+  sink_stream_count = 0;
+  for (i = 0; i < priv->streams->len; ++i) {
+    GstRTSPStream *stream;
+    stream = g_ptr_array_index (priv->streams, i);
+    if (gst_rtsp_stream_is_receiver (stream))
+        ++sink_stream_count;
+  }
+
+  if (medias_len != sink_stream_count) {
     GST_ERROR ("%p: Media has more or less streams than SDP (%d /= %d)", media,
         priv->streams->len, medias_len);
     return FALSE;
   }
 
+  skipped_streams = 0;
   for (i = 0; i < medias_len; i++) {
     const gchar *proto;
-    const GstSDPMedia *sdp_media = gst_sdp_message_get_media (sdp, i);
+    const GstSDPMedia *sdp_media;
     GstRTSPStream *stream;
     gint j, formats_len;
     const gchar *control;
     GstRTSPProfile profile, profiles;
+    gboolean sink_stream_found = FALSE;
 
-    stream = g_ptr_array_index (priv->streams, i);
+    do {
+        stream = g_ptr_array_index (priv->streams, i + skipped_streams);
+        if (gst_rtsp_stream_is_receiver (stream))
+            sink_stream_found = TRUE;
+        else
+            ++skipped_streams;
+    } while (!sink_stream_found);
+
+    sdp_media = gst_sdp_message_get_media (sdp, i);
 
     /* TODO: Should we do something with the other SDP information? */
 
@@ -4444,6 +4552,54 @@ gst_rtsp_media_complete_pipeline (GstRTSPMedia * media, GPtrArray * transports)
   g_mutex_unlock (&priv->lock);
 
   return TRUE;
+}
+
+gboolean gst_rtsp_media_is_recording (GstRTSPMedia * media)
+{
+  GstRTSPMediaPrivate *priv;
+  gint i;
+  gboolean recording;
+
+  g_return_val_if_fail (GST_IS_RTSP_MEDIA (media), FALSE);
+
+  priv = media->priv;
+
+  g_rec_mutex_lock (&priv->state_lock);
+
+  recording = FALSE;
+  for (i = 0; i < priv->streams->len; ++i) {
+    GstRTSPStream *stream;
+    stream = g_ptr_array_index (priv->streams, i);
+    if (gst_rtsp_stream_is_receiver (stream) && !gst_rtsp_stream_has_empty_pt_map (stream)) {
+      recording = TRUE;
+      break;
+    }
+  }
+
+  g_rec_mutex_unlock (&priv->state_lock);
+
+  return recording;
+}
+
+void gst_rtsp_media_reset_recording (GstRTSPMedia * media)
+{
+  GstRTSPMediaPrivate *priv;
+  gint i;
+
+  g_return_if_fail (GST_IS_RTSP_MEDIA (media));
+
+  priv = media->priv;
+
+  g_rec_mutex_lock (&priv->state_lock);
+
+  for (i = 0; i < priv->streams->len; ++i) {
+    GstRTSPStream *stream;
+    stream = g_ptr_array_index (priv->streams, i);
+    if (gst_rtsp_stream_is_receiver (stream))
+        gst_rtsp_stream_reset_pt_map (stream);
+  }
+
+  g_rec_mutex_unlock (&priv->state_lock);
 }
 
 void gst_rtsp_media_dump_to_dot_file (GstRTSPMedia * media, const gchar * file_name)

@@ -514,6 +514,10 @@ gst_rtsp_sdp_from_media (GstSDPMessage * sdp, GstSDPInfo * info,
     GstRTSPStream *stream;
 
     stream = gst_rtsp_media_get_stream (media, i);
+
+    if (!gst_rtsp_stream_is_sender (stream))
+      continue;
+
     res = gst_rtsp_sdp_from_stream (sdp, info, stream);
     if (!res) {
       GST_ERROR ("could not get SDP from stream %p", stream);

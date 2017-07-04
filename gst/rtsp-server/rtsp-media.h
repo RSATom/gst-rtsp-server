@@ -88,6 +88,7 @@ typedef enum {
 typedef enum {
   GST_RTSP_TRANSPORT_MODE_PLAY    = 1,
   GST_RTSP_TRANSPORT_MODE_RECORD  = 2,
+  GST_RTSP_TRANSPORT_MODE_PLAY_RECORD  = GST_RTSP_TRANSPORT_MODE_PLAY | GST_RTSP_TRANSPORT_MODE_RECORD,
 } GstRTSPTransportMode;
 
 /**
@@ -361,12 +362,14 @@ GstClockTime          gst_rtsp_media_get_base_time    (GstRTSPMedia *media);
 
 GST_RTSP_SERVER_API
 guint                 gst_rtsp_media_n_streams        (GstRTSPMedia *media);
+GST_RTSP_SERVER_API
+guint                 gst_rtsp_media_n_mode_streams   (GstRTSPMedia *media, gboolean record);
 
 GST_RTSP_SERVER_API
 GstRTSPStream *       gst_rtsp_media_get_stream       (GstRTSPMedia *media, guint idx);
 
 GST_RTSP_SERVER_API
-GstRTSPStream *       gst_rtsp_media_find_stream      (GstRTSPMedia *media, const gchar * control);
+GstRTSPStream *       gst_rtsp_media_find_stream      (GstRTSPMedia *media, const gchar * control, gboolean record);
 
 GST_RTSP_SERVER_API
 gboolean              gst_rtsp_media_seek             (GstRTSPMedia *media, GstRTSPTimeRange *range);
@@ -394,6 +397,9 @@ void                  gst_rtsp_media_set_pipeline_state (GstRTSPMedia * media,
 
 GST_RTSP_SERVER_API
 gboolean              gst_rtsp_media_complete_pipeline (GstRTSPMedia * media, GPtrArray * transports);
+
+gboolean              gst_rtsp_media_is_recording      (GstRTSPMedia * media);
+void                  gst_rtsp_media_reset_recording   (GstRTSPMedia * media);
 
 void                  gst_rtsp_media_dump_to_dot_file  (GstRTSPMedia * media,
                                                         const gchar * file_name);

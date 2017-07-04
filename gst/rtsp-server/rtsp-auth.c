@@ -956,6 +956,12 @@ check_factory (GstRTSPAuth * auth, GstRTSPContext * ctx, const gchar * check)
   const gchar *role;
   GstRTSPPermissions *perms;
 
+  // for backward compatibility play and record are always allowed by default
+  if (g_str_equal (check, GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_PLAY))
+      return TRUE;
+  if (g_str_equal (check, GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_RECORD))
+      return TRUE;
+
   if (!ensure_authenticated (auth, ctx))
     return FALSE;
 
