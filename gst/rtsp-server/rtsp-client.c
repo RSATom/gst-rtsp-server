@@ -928,7 +928,7 @@ paths_are_equal (const gchar * path1, const gchar * path2, gint len2)
  * but is cached for when the same client (without breaking the connection) is
  * doing a setup for the exact same url. */
 static GstRTSPMedia *
-find_media (GstRTSPClient * client, GstRTSPContext * ctx, gchar * path,
+find_media (GstRTSPClient * client, GstRTSPContext * ctx, gchar * path, gboolean record,
     gint * matched)
 {
   GstRTSPClientPrivate *priv = client->priv;
@@ -947,6 +947,12 @@ find_media (GstRTSPClient * client, GstRTSPContext * ctx, gchar * path,
     goto no_factory_access;
 
   if (!gst_rtsp_auth_check (GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_CONSTRUCT))
+    goto not_authorized;
+
+  if (!record && !gst_rtsp_auth_check (GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_PLAY))
+    goto not_authorized;
+
+  if (record && !gst_rtsp_auth_check (GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_RECORD))
     goto not_authorized;
 
   if (matched)
@@ -2376,7 +2382,7 @@ handle_setup_request (GstRTSPClient * client, GstRTSPContext * ctx)
   /* we have no session media, find one and manage it */
   if (sessmedia == NULL) {
     /* get a handle to the configuration of the media in the session */
-    media = find_media (client, ctx, path, &matched);
+    media = find_media (client, ctx, path, is_record, &matched);
     /* need to suspend the media, if the protocol has changed */
     if (media != NULL)
       gst_rtsp_media_suspend (media);
@@ -2827,8 +2833,9 @@ handle_describe_request (GstRTSPClient * client, GstRTSPContext * ctx)
     goto no_path;
 
   /* find the media object for the uri */
-  if (!(media = find_media (client, ctx, path, NULL)))
+  if (!(media = find_media (client, ctx, path, FALSE, NULL)))
     goto no_media;
+
 
   if (!(gst_rtsp_media_get_transport_mode (media) &
           GST_RTSP_TRANSPORT_MODE_PLAY))
@@ -3004,7 +3011,7 @@ handle_announce_request (GstRTSPClient * client, GstRTSPContext * ctx)
     goto no_path;
 
   /* find the media object for the uri */
-  if (!(media = find_media (client, ctx, path, NULL)))
+  if (!(media = find_media (client, ctx, path, TRUE, NULL)))
     goto no_media;
 
   ctx->media = media;

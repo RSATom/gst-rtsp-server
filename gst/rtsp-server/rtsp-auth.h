@@ -168,6 +168,20 @@ gchar *             gst_rtsp_auth_make_basic        (const gchar * user, const g
  */
 #define GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_CONSTRUCT  "auth.check.media.factory.construct"
 /**
+ * GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_PLAY:
+ *
+ * Check if media constructed from a media factory could be played.
+ * A response should be sent on error.
+ */
+#define GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_PLAY  "auth.check.media.factory.play"
+/**
+ * GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_RECORD:
+ *
+ * Check if media constructed from a media factory could be recorded.
+ * A response should be sent on error.
+ */
+#define GST_RTSP_AUTH_CHECK_MEDIA_FACTORY_RECORD  "auth.check.media.factory.record"
+/**
  * GST_RTSP_AUTH_CHECK_TRANSPORT_CLIENT_SETTINGS:
  *
  * Check if the client can specify TTL, destination and
