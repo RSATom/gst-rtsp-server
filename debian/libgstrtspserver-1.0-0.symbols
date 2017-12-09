@@ -117,13 +117,16 @@ libgstrtspserver-1.0.so.0 libgstrtspserver-1.0-0 #MINVER#
  gst_rtsp_media_get_type@Base 1.4.5
  gst_rtsp_media_handle_sdp@Base 1.6.0
  gst_rtsp_media_is_eos_shutdown@Base 1.4.5
+ gst_rtsp_media_is_recording@Base 1.12.3-1pr
  gst_rtsp_media_is_reusable@Base 1.4.5
  gst_rtsp_media_is_shared@Base 1.4.5
  gst_rtsp_media_is_stop_on_disconnect@Base 1.8.0
  gst_rtsp_media_is_time_provider@Base 1.4.5
  gst_rtsp_media_n_streams@Base 1.4.5
+ gst_rtsp_media_n_mode_streams@Base 1.12.3-1pr
  gst_rtsp_media_new@Base 1.4.5
  gst_rtsp_media_prepare@Base 1.4.5
+ gst_rtsp_media_reset_recording@Base 1.12.3-1pr
  gst_rtsp_media_seek@Base 1.4.5
  gst_rtsp_media_set_address_pool@Base 1.4.5
  gst_rtsp_media_set_buffer_size@Base 1.4.5
@@ -260,8 +263,11 @@ libgstrtspserver-1.0.so.0 libgstrtspserver-1.0-0 #MINVER#
  gst_rtsp_stream_get_ssrc@Base 1.4.5
  gst_rtsp_stream_get_type@Base 1.4.5
  gst_rtsp_stream_has_control@Base 1.4.5
+ gst_rtsp_stream_has_empty_pt_map@Base 1.12.3-1pr
  gst_rtsp_stream_is_blocking@Base 1.4.5
  gst_rtsp_stream_is_client_side@Base 1.8.0
+ gst_rtsp_stream_is_sink@Base 1.12.3-1pr
+ gst_rtsp_stream_is_source@Base 1.12.3-1pr
  gst_rtsp_stream_is_transport_supported@Base 1.4.5
  gst_rtsp_stream_join_bin@Base 1.4.5
  gst_rtsp_stream_leave_bin@Base 1.4.5
@@ -273,6 +279,7 @@ libgstrtspserver-1.0.so.0 libgstrtspserver-1.0-0 #MINVER#
  gst_rtsp_stream_remove_transport@Base 1.4.5
  gst_rtsp_stream_request_aux_sender@Base 1.6.0
  gst_rtsp_stream_reserve_address@Base 1.4.5
+ gst_rtsp_stream_reset_pt_map@Base 1.12.3-1pr
  gst_rtsp_stream_set_address_pool@Base 1.4.5
  gst_rtsp_stream_set_buffer_size@Base 1.6.0
  gst_rtsp_stream_set_client_side@Base 1.8.0
