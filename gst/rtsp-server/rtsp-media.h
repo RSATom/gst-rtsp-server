@@ -395,6 +395,9 @@ void                  gst_rtsp_media_set_pipeline_state (GstRTSPMedia * media,
 GST_RTSP_SERVER_API
 gboolean              gst_rtsp_media_complete_pipeline (GstRTSPMedia * media, GPtrArray * transports);
 
+void                  gst_rtsp_media_dump_to_dot_file  (GstRTSPMedia * media,
+                                                        const gchar * file_name);
+
 #ifdef G_DEFINE_AUTOPTR_CLEANUP_FUNC
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(GstRTSPMedia, gst_object_unref)
 #endif
