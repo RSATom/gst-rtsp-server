@@ -4109,3 +4109,14 @@ gst_rtsp_media_complete_pipeline (GstRTSPMedia * media, GPtrArray * transports)
 
   return TRUE;
 }
+
+void gst_rtsp_media_dump_to_dot_file (GstRTSPMedia * media, const gchar * file_name)
+{
+  GstRTSPMediaPrivate *priv;
+
+  g_return_if_fail (GST_IS_RTSP_MEDIA (media));
+
+  priv = media->priv;
+
+  GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS(GST_BIN(priv->pipeline), GST_DEBUG_GRAPH_SHOW_ALL, file_name);
+}
