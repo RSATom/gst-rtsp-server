@@ -1,5 +1,9 @@
 ## MODE_PLAY | MODE_RECORD Demos
 
+### RtspRestreamServer
+
+https://github.com/RSATom/RtspRestreamServer
+
 ### `videotestsrc` restreaming
 
 ```
