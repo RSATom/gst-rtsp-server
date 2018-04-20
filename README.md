@@ -1,3 +1,7 @@
+## Ubuntu PPA
+https://launchpad.net/~rsatom/+archive/ubuntu/gst-rtsp-server-1.0  
+*At the moment it contains only binaries for Ubuntu 17 (Artful)*
+
 ## MODE_PLAY | MODE_RECORD Demos
 
 ### RtspRestreamServer
