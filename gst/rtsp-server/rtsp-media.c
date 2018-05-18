@@ -2838,6 +2838,8 @@ default_handle_message (GstRTSPMedia * media, GstMessage * message)
       g_error_free (gerror);
       g_free (debug);
 
+      gst_rtsp_media_dump_to_dot_file(media, "rtsp-server");
+
       gst_rtsp_media_set_status (media, GST_RTSP_MEDIA_STATUS_ERROR);
       break;
     }
